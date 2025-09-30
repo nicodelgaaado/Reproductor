@@ -1,127 +1,167 @@
 ﻿<div class="app-shell">
   <header class="app-header">
-    <h1>Angular Music Player</h1>
+    <h1>ARES</h1>
     <p>Import your audio files and control playback directly in the browser.</p>
   </header>
 
-  <section class="import-section">
-    <label class="import-button">
-      <input
-        type="file"
-        accept="audio/*"
-        multiple
-        (change)="onFilesSelected($event)"
-      />
-      <span>Add Songs</span>
-    </label>
-    <p class="import-hint">Supported formats depend on the browser (MP3, WAV, OGG, etc.).</p>
-    <p class="queue-hint">Drag songs in the queue to set the play order.</p>
-  </section>
+  <main class="app-layout">
+    <section class="panel panel-left">
+      <div class="panel-header">
+        <h2>Import Music</h2>
+        <p>Load audio files to build your personalized queue.</p>
+      </div>
+      <label class="import-button">
+        <input
+          type="file"
+          accept="audio/*"
+          multiple
+          (change)="onFilesSelected($event)"
+        />
+        <span>Add Songs</span>
+      </label>
+      <div class="import-details">
+        <h3>Supported formats</h3>
+        <ul class="import-extensions">
+          <li><span>.mp3</span> – MPEG-1/2 Audio Layer III</li>
+          <li><span>.wav</span> – Uncompressed PCM audio</li>
+          <li><span>.ogg</span> – Ogg Vorbis/Opus container</li>
+          <li><span>.aac</span> – Advanced Audio Coding</li>
+          <li><span>.flac</span> – Lossless Free Lossless Audio Codec</li>
+        </ul>
+        <p class="import-note">Browser support may vary; if a format is not supported it will not play.</p>
+      </div>
+      <p class="queue-hint">Drag songs in the queue to set the play order.</p>
+    </section>
 
-  <section class="player-panel" *ngIf="tracks.length">
-    <div class="now-playing">
-      <div class="track-name" *ngIf="currentTrack as track; else idleState">
-        {{ track.name }}
+    <section class="panel panel-center">
+      <div class="panel-header">
+        <h2>Now Playing</h2>
+        <p *ngIf="currentTrack">{{ currentTrack.name }}</p>
+        <p *ngIf="!currentTrack">Select a track to start listening.</p>
+      </div>
+      <div class="now-playing">
+        <ng-container *ngIf="currentTrack as track; else idleState">
+          <div class="artwork" [class.placeholder]="!track.artworkUrl">
+            <img *ngIf="track.artworkUrl" [src]="track.artworkUrl" [alt]="track.name + ' cover art'" />
+            <span *ngIf="!track.artworkUrl" aria-hidden="true">No cover</span>
+          </div>
+          <div class="track-meta">
+            <div class="track-name">{{ track.name }}</div>
+          </div>
+        </ng-container>
       </div>
       <ng-template #idleState>
-        <div class="track-name">Select a track to start listening.</div>
+        <div class="artwork placeholder">
+          <span aria-hidden="true">No cover</span>
+        </div>
+        <div class="track-meta">
+          <div class="track-name">Select a track to start listening.</div>
+        </div>
       </ng-template>
-    </div>
 
-    <div class="timeline" [class.disabled]="!currentTrack">
-      <span>{{ formatTime(currentTrack ? currentTime : 0) }}</span>
-      <input
-        type="range"
-        [max]="currentTrack ? duration : 0"
-        [value]="currentTrack ? currentTime : 0"
-        step="0.1"
-        (input)="onSeek($event)"
-        [disabled]="!currentTrack"
-      />
-      <span>{{ formatTime(currentTrack ? duration : 0) }}</span>
-    </div>
+      <div class="timeline" [class.disabled]="!currentTrack">
+        <span>{{ formatTime(currentTrack ? currentTime : 0) }}</span>
+        <input
+          type="range"
+          [max]="currentTrack ? duration : 0"
+          [value]="currentTrack ? currentTime : 0"
+          step="0.1"
+          (input)="onSeek($event)"
+          [disabled]="!currentTrack"
+        />
+        <span>{{ formatTime(currentTrack ? duration : 0) }}</span>
+      </div>
 
-    <div class="transport">
-      <button
-        type="button"
-        class="control"
-        (click)="previousTrack()"
-        [disabled]="currentTrackIndex <= 0"
-      >
-        &#9664;&#9664;
-      </button>
-      <button
-        type="button"
-        class="control primary"
-        (click)="togglePlayback()"
-        [disabled]="!tracks.length"
-      >
-        <ng-container *ngIf="isLoadingTrack">Loading.</ng-container>
-        <ng-container *ngIf="!isLoadingTrack">
-          {{ isPlaying ? 'Pause' : 'Play' }}
-        </ng-container>
-      </button>
-      <button
-        type="button"
-        class="control"
-        (click)="nextTrack()"
-        [disabled]="currentTrackIndex === -1 || currentTrackIndex >= tracks.length - 1"
-      >
-        &#9654;&#9654;
-      </button>
-    </div>
-
-    <div class="volume">
-      <label for="volume">Volume</label>
-      <input
-        id="volume"
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        [value]="volume"
-        (input)="onVolumeChange($event)"
-      />
-    </div>
-  </section>
-
-  <section class="playlist" *ngIf="tracks.length; else emptyState">
-    <h2>Playback Queue</h2>
-    <ul
-      cdkDropList
-      [cdkDropListData]="tracks"
-      (cdkDropListDropped)="onQueueDrop($event)"
-    >
-      <li
-        *ngFor="let track of tracks; index as i"
-        cdkDrag
-        (click)="playTrack(i)"
-        [class.active]="isCurrentTrack(i)"
-      >
-        <div class="drag-handle" cdkDragHandle title="Drag to reorder">
-          &#8942;
-        </div>
-        <div class="details">
-          <div class="info">
-            <span class="position">#{{ i }}</span>
-            <span class="title">{{ track.name }}</span>
-          </div>
-          <span class="duration">{{ trackDuration(track) }}</span>
-        </div>
+      <div class="transport">
         <button
           type="button"
-          class="remove-track"
-          (click)="removeTrack(i); $event.stopPropagation();"
+          class="control"
+          (click)="previousTrack()"
+          [disabled]="currentTrackIndex <= 0"
         >
-          Remove
+          &#9664;&#9664;
         </button>
-      </li>
-    </ul>
-  </section>
+        <button
+          type="button"
+          class="control primary"
+          (click)="togglePlayback()"
+          [disabled]="!tracks.length"
+        >
+          <ng-container *ngIf="isLoadingTrack">Loading.</ng-container>
+          <ng-container *ngIf="!isLoadingTrack">
+            {{ isPlaying ? 'Pause' : 'Play' }}
+          </ng-container>
+        </button>
+        <button
+          type="button"
+          class="control"
+          (click)="nextTrack()"
+          [disabled]="currentTrackIndex === -1 || currentTrackIndex >= tracks.length - 1"
+        >
+          &#9654;&#9654;
+        </button>
+      </div>
 
-  <ng-template #emptyState>
-    <div class="empty-state">
-      <p>No songs yet. Use the <strong>Add Songs</strong> button to import your music.</p>
-    </div>
-  </ng-template>
+      <div class="volume">
+        <label for="volume">Volume</label>
+        <input
+          id="volume"
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          [value]="volume"
+          (input)="onVolumeChange($event)"
+        />
+      </div>
+    </section>
+
+    <section class="panel panel-right">
+      <div class="panel-header">
+        <h2>Queue</h2>
+        <p>{{ tracks.length ? (tracks.length === 1 ? '1 track loaded' : tracks.length + ' tracks loaded') : 'No tracks yet' }}</p>
+      </div>
+      <ng-container *ngIf="tracks.length; else queueEmptyState">
+        <ul
+          cdkDropList
+          [cdkDropListData]="tracks"
+          (cdkDropListDropped)="onQueueDrop($event)"
+        >
+          <li
+            *ngFor="let track of tracks; index as i"
+            cdkDrag
+            (click)="playTrack(i)"
+            [class.active]="isCurrentTrack(i)"
+          >
+            <div class="drag-handle" cdkDragHandle title="Drag to reorder">
+              &#8942;
+            </div>
+            <div class="thumbnail" [class.placeholder]="!track.artworkUrl">
+              <img *ngIf="track.artworkUrl" [src]="track.artworkUrl" [alt]="track.name + ' cover art'" />
+              <span *ngIf="!track.artworkUrl" aria-hidden="true">No cover</span>
+            </div>
+            <div class="details">
+              <div class="info">
+                <span class="position">#{{ i }}</span>
+                <span class="title">{{ track.name }}</span>
+              </div>
+              <span class="duration">{{ trackDuration(track) }}</span>
+            </div>
+            <button
+              type="button"
+              class="remove-track"
+              (click)="removeTrack(i); $event.stopPropagation();"
+            >
+              Remove
+            </button>
+          </li>
+        </ul>
+      </ng-container>
+      <ng-template #queueEmptyState>
+        <div class="empty-state">
+          <p>No songs yet. Use the <strong>Add Songs</strong> button to import your music.</p>
+        </div>
+      </ng-template>
+    </section>
+  </main>
 </div>

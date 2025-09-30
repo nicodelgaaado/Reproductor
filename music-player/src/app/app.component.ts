@@ -1,4 +1,4 @@
-﻿import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
+import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { CommonModule } from '@angular/common';
 import { Component, NgZone, OnDestroy } from '@angular/core';
 import { DoublyLinkedList, DoublyLinkedListNode } from './models/doubly-linked-list';
@@ -26,6 +26,7 @@ export class AppComponent implements OnDestroy {
   private readonly boundLoadedMetadata = () => this.onLoadedMetadata();
   private readonly playlist = new DoublyLinkedList<Track>();
   private currentNode: DoublyLinkedListNode<Track> | null = null;
+  private readonly latin1Decoder: TextDecoder | null = typeof TextDecoder !== 'undefined' ? new TextDecoder('iso-8859-1') : null;
 
   constructor(private readonly zone: NgZone) {
     this.audio.preload = 'metadata';
@@ -39,7 +40,7 @@ export class AppComponent implements OnDestroy {
     return this.currentNode?.value ?? null;
   }
 
-  onFilesSelected(event: Event): void {
+  async onFilesSelected(event: Event): Promise<void> {
     const element = event.target as HTMLInputElement;
     const files = Array.from(element.files ?? []);
 
@@ -47,15 +48,16 @@ export class AppComponent implements OnDestroy {
       return;
     }
 
-    const newTracks = files
+    const uniqueAudioFiles = files
       .filter(file => file.type.startsWith('audio/'))
-      .filter(file => !this.tracks.some(track => track.file.name === file.name && track.file.size === file.size))
-      .map(file => ({
-        id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${file.name}-${Date.now()}`,
-        name: file.name.replace(/\.[^.]+$/, ''),
-        url: URL.createObjectURL(file),
-        file
-      } satisfies Track));
+      .filter(file => !this.tracks.some(track => track.file.name === file.name && track.file.size === file.size));
+
+    if (!uniqueAudioFiles.length) {
+      element.value = '';
+      return;
+    }
+
+    const newTracks = await Promise.all(uniqueAudioFiles.map(file => this.createTrackFromFile(file)));
 
     if (!newTracks.length) {
       element.value = '';
@@ -81,7 +83,6 @@ export class AppComponent implements OnDestroy {
 
     element.value = '';
   }
-
   playTrack(index: number): void {
     if (index < 0 || index >= this.tracks.length) {
       return;
@@ -160,7 +161,7 @@ export class AppComponent implements OnDestroy {
     const trackToRemove = node.value;
 
     this.playlist.removeNode(node);
-    URL.revokeObjectURL(trackToRemove.url);
+    this.releaseTrackResources(trackToRemove);
 
     if (wasCurrent) {
       this.audio.pause();
@@ -247,7 +248,7 @@ export class AppComponent implements OnDestroy {
     this.audio.removeEventListener('ended', this.boundEnded);
     this.audio.removeEventListener('loadedmetadata', this.boundLoadedMetadata);
     this.audio.pause();
-    this.playlist.toArray().forEach(track => URL.revokeObjectURL(track.url));
+    this.playlist.toArray().forEach(track => this.releaseTrackResources(track));
   }
 
   private selectNode(node: DoublyLinkedListNode<Track>, shouldPlay: boolean): void {
@@ -274,6 +275,214 @@ export class AppComponent implements OnDestroy {
   private refreshPlaylistSnapshot(): void {
     this.tracks = this.playlist.toArray();
     this.currentTrackIndex = this.playlist.indexOfNode(this.currentNode);
+  }
+
+  private async createTrackFromFile(file: File): Promise<Track> {
+    const fallbackId = file.name + '-' + Date.now();
+    const track: Track = {
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : fallbackId,
+      name: file.name.replace(/\.[^.]+$/, ''),
+      url: URL.createObjectURL(file),
+      file
+    };
+
+    if (this.shouldExtractArtwork(file)) {
+      const artworkUrl = await this.extractArtworkUrl(file);
+      if (artworkUrl) {
+        track.artworkUrl = artworkUrl;
+      }
+    }
+
+    return track;
+  }
+
+  private releaseTrackResources(track: Track): void {
+    URL.revokeObjectURL(track.url);
+    if (track.artworkUrl) {
+      URL.revokeObjectURL(track.artworkUrl);
+    }
+  }
+
+  private shouldExtractArtwork(file: File): boolean {
+    const type = file.type?.toLowerCase() ?? '';
+    if (type === 'audio/mpeg' || type === 'audio/mp3') {
+      return true;
+    }
+
+    return file.name.toLowerCase().endsWith('.mp3');
+  }
+
+  private async extractArtworkUrl(file: File): Promise<string | undefined> {
+    const headerBuffer = await file.slice(0, 10).arrayBuffer();
+    if (headerBuffer.byteLength < 10) {
+      return undefined;
+    }
+
+    const header = new Uint8Array(headerBuffer);
+    if (header[0] !== 0x49 || header[1] !== 0x44 || header[2] !== 0x33) {
+      return undefined;
+    }
+
+    const version = header[3];
+    if (version < 3) {
+      return undefined;
+    }
+
+    const flags = header[5];
+    const tagSize = this.readSynchsafeInteger(header, 6);
+    if (!tagSize) {
+      return undefined;
+    }
+
+    const tagBuffer = await file.slice(10, 10 + tagSize).arrayBuffer();
+    if (!tagBuffer.byteLength) {
+      return undefined;
+    }
+
+    let tagLength = tagBuffer.byteLength;
+    if ((flags & 0x10) !== 0 && tagLength >= 10) {
+      tagLength -= 10;
+    }
+
+    const tag = new Uint8Array(tagBuffer, 0, tagLength);
+    const view = new DataView(tagBuffer, 0, tagLength);
+
+    let offset = 0;
+    if ((flags & 0x40) !== 0 && tag.length >= 4) {
+      if (version === 3 && tag.length >= 4) {
+        const extSize = view.getUint32(0);
+        offset = Math.min(extSize + 4, tag.length);
+      } else if (version === 4) {
+        const extSize = this.readSynchsafeFromView(view, 0);
+        offset = Math.min(extSize, tag.length);
+      }
+    }
+
+    while (offset + 10 <= tag.length) {
+      if (tag[offset] === 0) {
+        break;
+      }
+
+      const frameId = this.decodeFrameId(tag, offset);
+      if (!frameId) {
+        break;
+      }
+
+      const frameSize = version === 4
+        ? this.readSynchsafeFromView(view, offset + 4)
+        : view.getUint32(offset + 4);
+
+      if (!frameSize || frameSize < 1) {
+        break;
+      }
+
+      const frameDataStart = offset + 10;
+      const frameDataEnd = frameDataStart + frameSize;
+      if (frameDataEnd > tag.length) {
+        break;
+      }
+
+      if (frameId === 'APIC') {
+        const frameData = tag.subarray(frameDataStart, frameDataEnd);
+        const artworkUrl = this.parseApicFrame(frameData);
+        if (artworkUrl) {
+          return artworkUrl;
+        }
+      }
+
+      offset = frameDataEnd;
+    }
+
+    return undefined;
+  }
+
+  private parseApicFrame(frameData: Uint8Array): string | undefined {
+    if (frameData.length < 4) {
+      return undefined;
+    }
+
+    const textEncoding = frameData[0];
+    let cursor = 1;
+
+    const mimeTerminator = frameData.indexOf(0, cursor);
+    if (mimeTerminator === -1) {
+      return undefined;
+    }
+
+    const mimeBytes = frameData.subarray(cursor, mimeTerminator);
+    const mimeType = (this.latin1Decoder?.decode(mimeBytes).trim() || 'image/jpeg').toLowerCase();
+    cursor = mimeTerminator + 1;
+
+    if (cursor >= frameData.length) {
+      return undefined;
+    }
+
+    cursor += 1;
+    cursor = this.advancePastEncodedString(frameData, cursor, frameData.length, textEncoding);
+    if (cursor >= frameData.length) {
+      return undefined;
+    }
+
+    const imageBytes = frameData.subarray(cursor);
+    if (!imageBytes.length) {
+      return undefined;
+    }
+
+    const blob = new Blob([imageBytes], { type: mimeType || 'image/jpeg' });
+    return URL.createObjectURL(blob);
+  }
+
+  private readSynchsafeInteger(bytes: Uint8Array, offset: number): number {
+    if (offset + 4 > bytes.length) {
+      return 0;
+    }
+
+    return (bytes[offset] << 21)
+      | (bytes[offset + 1] << 14)
+      | (bytes[offset + 2] << 7)
+      | bytes[offset + 3];
+  }
+
+  private readSynchsafeFromView(view: DataView, offset: number): number {
+    if (offset + 4 > view.byteLength) {
+      return 0;
+    }
+
+    return (view.getUint8(offset) << 21)
+      | (view.getUint8(offset + 1) << 14)
+      | (view.getUint8(offset + 2) << 7)
+      | view.getUint8(offset + 3);
+  }
+
+  private decodeFrameId(bytes: Uint8Array, offset: number): string {
+    if (offset + 4 > bytes.length) {
+      return '';
+    }
+
+    const chars = String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+    return /^[A-Z0-9]{4}$/.test(chars) ? chars : '';
+  }
+
+  private advancePastEncodedString(data: Uint8Array, offset: number, end: number, encoding: number): number {
+    if (offset >= end) {
+      return end;
+    }
+
+    if (encoding === 0 || encoding === 3) {
+      while (offset < end && data[offset] !== 0) {
+        offset += 1;
+      }
+      return Math.min(offset + 1, end);
+    }
+
+    while (offset + 1 < end) {
+      if (data[offset] === 0 && data[offset + 1] === 0) {
+        return Math.min(offset + 2, end);
+      }
+      offset += 2;
+    }
+
+    return end;
   }
 
   private playInternal(): void {
@@ -315,3 +524,14 @@ export class AppComponent implements OnDestroy {
     this.zone.run(() => this.nextTrack());
   }
 }
+
+
+
+
+
+
+
+
+
+
+

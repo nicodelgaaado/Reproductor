@@ -4,4 +4,5 @@ export interface Track {
   url: string;
   file: File;
   duration?: number;
+  artworkUrl?: string;
 }
