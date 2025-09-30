@@ -1,11 +1,13 @@
+ï»¿import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { CommonModule } from '@angular/common';
 import { Component, NgZone, OnDestroy } from '@angular/core';
+import { DoublyLinkedList, DoublyLinkedListNode } from './models/doubly-linked-list';
 import { Track } from './models/track.model';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, DragDropModule],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
@@ -22,6 +24,8 @@ export class AppComponent implements OnDestroy {
   private readonly boundTimeUpdate = () => this.onTimeUpdate();
   private readonly boundEnded = () => this.onTrackEnded();
   private readonly boundLoadedMetadata = () => this.onLoadedMetadata();
+  private readonly playlist = new DoublyLinkedList<Track>();
+  private currentNode: DoublyLinkedListNode<Track> | null = null;
 
   constructor(private readonly zone: NgZone) {
     this.audio.preload = 'metadata';
@@ -32,11 +36,7 @@ export class AppComponent implements OnDestroy {
   }
 
   get currentTrack(): Track | null {
-    if (this.currentTrackIndex === -1) {
-      return null;
-    }
-
-    return this.tracks[this.currentTrackIndex] ?? null;
+    return this.currentNode?.value ?? null;
   }
 
   onFilesSelected(event: Event): void {
@@ -62,10 +62,21 @@ export class AppComponent implements OnDestroy {
       return;
     }
 
-    this.tracks = [...this.tracks, ...newTracks];
+    let firstInsertedNode: DoublyLinkedListNode<Track> | null = null;
+    newTracks.forEach(track => {
+      const node = this.playlist.insertAtEnd(track);
+      if (!firstInsertedNode) {
+        firstInsertedNode = node;
+      }
+    });
 
-    if (this.currentTrackIndex === -1) {
-      this.playTrack(0);
+    this.refreshPlaylistSnapshot();
+
+    if (!this.currentNode) {
+      const nodeToPlay = firstInsertedNode ?? this.playlist.getHead();
+      if (nodeToPlay) {
+        this.selectNode(nodeToPlay, true);
+      }
     }
 
     element.value = '';
@@ -76,19 +87,12 @@ export class AppComponent implements OnDestroy {
       return;
     }
 
-    const selectedTrack = this.tracks[index];
-    const isSameTrack = index === this.currentTrackIndex;
-
-    if (!isSameTrack) {
-      this.currentTrackIndex = index;
-      this.isLoadingTrack = true;
-      this.duration = selectedTrack.duration ?? 0;
-      this.currentTime = 0;
-      this.audio.src = selectedTrack.url;
-      this.audio.load();
+    const node = this.playlist.getNodeAt(index);
+    if (!node) {
+      return;
     }
 
-    this.playInternal();
+    this.selectNode(node, true);
   }
 
   togglePlayback(): void {
@@ -96,8 +100,11 @@ export class AppComponent implements OnDestroy {
       return;
     }
 
-    if (this.currentTrackIndex === -1) {
-      this.playTrack(0);
+    if (!this.currentNode) {
+      const head = this.playlist.getHead();
+      if (head) {
+        this.selectNode(head, true);
+      }
       return;
     }
 
@@ -110,7 +117,7 @@ export class AppComponent implements OnDestroy {
   }
 
   previousTrack(): void {
-    if (this.currentTrackIndex === -1) {
+    if (!this.currentNode) {
       return;
     }
 
@@ -119,25 +126,77 @@ export class AppComponent implements OnDestroy {
       return;
     }
 
-    const prevIndex = this.currentTrackIndex - 1;
-    if (prevIndex >= 0) {
-      this.playTrack(prevIndex);
+    const prevNode = this.currentNode.prev;
+    if (prevNode) {
+      this.selectNode(prevNode, true);
     }
   }
 
   nextTrack(): void {
-    if (this.currentTrackIndex === -1) {
+    if (!this.currentNode) {
       return;
     }
 
-    const nextIndex = this.currentTrackIndex + 1;
-    if (nextIndex < this.tracks.length) {
-      this.playTrack(nextIndex);
+    const nextNode = this.currentNode.next;
+    if (nextNode) {
+      this.selectNode(nextNode, true);
     } else {
       this.audio.pause();
       this.isPlaying = false;
       this.seekTo(0);
     }
+  }
+
+  removeTrack(index: number): void {
+    const node = this.playlist.getNodeAt(index);
+    if (!node) {
+      return;
+    }
+
+    const nextNode = node.next;
+    const prevNode = node.prev;
+    const wasCurrent = node === this.currentNode;
+    const wasPlaying = this.isPlaying;
+    const trackToRemove = node.value;
+
+    this.playlist.removeNode(node);
+    URL.revokeObjectURL(trackToRemove.url);
+
+    if (wasCurrent) {
+      this.audio.pause();
+      this.isPlaying = false;
+      this.isLoadingTrack = false;
+
+      const replacement = nextNode ?? prevNode ?? null;
+      if (replacement) {
+        this.selectNode(replacement, wasPlaying);
+      } else {
+        this.currentNode = null;
+        this.currentTrackIndex = -1;
+        this.duration = 0;
+        this.currentTime = 0;
+        this.audio.src = '';
+      }
+    }
+
+    this.refreshPlaylistSnapshot();
+  }
+
+  onQueueDrop(event: CdkDragDrop<Track[]>): void {
+    if (event.previousIndex === event.currentIndex) {
+      return;
+    }
+
+    const movedNode = this.playlist.moveNode(event.previousIndex, event.currentIndex);
+    if (!movedNode) {
+      return;
+    }
+
+    if (this.currentNode === movedNode) {
+      this.currentTrackIndex = this.playlist.indexOfNode(this.currentNode);
+    }
+
+    this.refreshPlaylistSnapshot();
   }
 
   seekTo(value: number): void {
@@ -180,7 +239,7 @@ export class AppComponent implements OnDestroy {
   }
 
   trackDuration(track: Track): string {
-    return track.duration ? this.formatTime(track.duration) : '—';
+    return track.duration ? this.formatTime(track.duration) : '-';
   }
 
   ngOnDestroy(): void {
@@ -188,7 +247,33 @@ export class AppComponent implements OnDestroy {
     this.audio.removeEventListener('ended', this.boundEnded);
     this.audio.removeEventListener('loadedmetadata', this.boundLoadedMetadata);
     this.audio.pause();
-    this.tracks.forEach(track => URL.revokeObjectURL(track.url));
+    this.playlist.toArray().forEach(track => URL.revokeObjectURL(track.url));
+  }
+
+  private selectNode(node: DoublyLinkedListNode<Track>, shouldPlay: boolean): void {
+    const isSameNode = node === this.currentNode;
+    this.currentNode = node;
+    this.currentTrackIndex = this.playlist.indexOfNode(node);
+
+    if (!isSameNode) {
+      const track = node.value;
+      this.isLoadingTrack = true;
+      this.duration = track.duration ?? 0;
+      this.currentTime = 0;
+      this.audio.src = track.url;
+      this.audio.load();
+    }
+
+    if (shouldPlay) {
+      this.playInternal();
+    } else {
+      this.isPlaying = false;
+    }
+  }
+
+  private refreshPlaylistSnapshot(): void {
+    this.tracks = this.playlist.toArray();
+    this.currentTrackIndex = this.playlist.indexOfNode(this.currentNode);
   }
 
   private playInternal(): void {
@@ -212,9 +297,9 @@ export class AppComponent implements OnDestroy {
     this.zone.run(() => {
       const duration = Number.isFinite(this.audio.duration) ? this.audio.duration : 0;
       this.duration = duration;
-      const track = this.currentTrack;
-      if (track) {
-        track.duration = duration;
+      const node = this.currentNode;
+      if (node) {
+        node.value.duration = duration;
       }
       this.isLoadingTrack = false;
     });

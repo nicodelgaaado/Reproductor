@@ -1,4 +1,4 @@
-:host {
+﻿:host {
   display: block;
   min-height: 100vh;
   background: linear-gradient(135deg, #141e30, #243b55);
@@ -177,8 +177,9 @@
     cursor: pointer;
     transition: transform 0.2s ease, background 0.2s ease;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
 
     &:hover {
       background: rgba(255, 255, 255, 0.12);
@@ -191,23 +192,81 @@
       font-weight: 600;
     }
 
+    .drag-handle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.75rem;
+      font-size: 1.1rem;
+      color: rgba(255, 255, 255, 0.55);
+      cursor: grab;
+      user-select: none;
+      transition: color 0.2s ease;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
     .details {
+      flex: 1;
       display: flex;
       justify-content: space-between;
       width: 100%;
       gap: 1rem;
+      min-width: 0;
+    }
+
+    .info {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      min-width: 0;
+    }
+
+    .position {
+      font-weight: 600;
+      opacity: 0.65;
+      min-width: 2.2rem;
     }
 
     .title {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      flex: 1;
     }
 
     .duration {
       color: inherit;
       font-variant-numeric: tabular-nums;
       opacity: 0.8;
+    }
+
+    .remove-track {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #fff;
+      border-radius: 999px;
+      padding: 0.45rem 0.9rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    .remove-track:hover {
+      background: rgba(255, 255, 255, 0.18);
+      transform: translateY(-1px);
+    }
+
+    &.active .remove-track {
+      background: rgba(17, 17, 17, 0.08);
+      color: #111;
+      border-color: rgba(17, 17, 17, 0.12);
+    }
+
+    &.active .remove-track:hover {
+      background: rgba(17, 17, 17, 0.18);
     }
   }
 }
@@ -265,5 +324,55 @@ input[type='range']::-moz-range-thumb {
 
   .playlist {
     padding: 1.25rem;
+  }
+}\n\n\r\n
+
+
+
+
+
+.queue-hint {
+  margin-top: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+}
+
+.playlist li:hover .drag-handle {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cdk-drag-preview {
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.cdk-drag-placeholder {
+  opacity: 0.2;
+}
+
+@media (max-width: 720px) {
+  .playlist li {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .playlist li .details {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .playlist li .info {
+    width: 100%;
+  }
+
+  .playlist li .duration {
+    align-self: flex-start;
+  }
+
+  .playlist li .remove-track {
+    margin-left: auto;
+    margin-top: 0.4rem;
   }
 }

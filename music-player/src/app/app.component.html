@@ -1,4 +1,4 @@
-<div class="app-shell">
+ï»¿<div class="app-shell">
   <header class="app-header">
     <h1>Angular Music Player</h1>
     <p>Import your audio files and control playback directly in the browser.</p>
@@ -15,6 +15,7 @@
       <span>Add Songs</span>
     </label>
     <p class="import-hint">Supported formats depend on the browser (MP3, WAV, OGG, etc.).</p>
+    <p class="queue-hint">Drag songs in the queue to set the play order.</p>
   </section>
 
   <section class="player-panel" *ngIf="tracks.length">
@@ -55,7 +56,7 @@
         (click)="togglePlayback()"
         [disabled]="!tracks.length"
       >
-        <ng-container *ngIf="isLoadingTrack">Loading…</ng-container>
+        <ng-container *ngIf="isLoadingTrack">Loading.</ng-container>
         <ng-container *ngIf="!isLoadingTrack">
           {{ isPlaying ? 'Pause' : 'Play' }}
         </ng-container>
@@ -85,17 +86,35 @@
   </section>
 
   <section class="playlist" *ngIf="tracks.length; else emptyState">
-    <h2>Playlist</h2>
-    <ul>
+    <h2>Playback Queue</h2>
+    <ul
+      cdkDropList
+      [cdkDropListData]="tracks"
+      (cdkDropListDropped)="onQueueDrop($event)"
+    >
       <li
         *ngFor="let track of tracks; index as i"
+        cdkDrag
         (click)="playTrack(i)"
         [class.active]="isCurrentTrack(i)"
       >
+        <div class="drag-handle" cdkDragHandle title="Drag to reorder">
+          &#8942;
+        </div>
         <div class="details">
-          <span class="title">{{ track.name }}</span>
+          <div class="info">
+            <span class="position">#{{ i }}</span>
+            <span class="title">{{ track.name }}</span>
+          </div>
           <span class="duration">{{ trackDuration(track) }}</span>
         </div>
+        <button
+          type="button"
+          class="remove-track"
+          (click)="removeTrack(i); $event.stopPropagation();"
+        >
+          Remove
+        </button>
       </li>
     </ul>
   </section>
