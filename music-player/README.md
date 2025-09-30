@@ -1,4 +1,4 @@
-# Ares MusicPlayer
+# Ares Music Player
 
 Este proyecto fue generado con [Angular CLI](https://github.com/angular/angular-cli) version 17.3.17. Se utilizó el framework Electron para empaquetar tecnologías web y ejecutarse cómo una aplicación de escritorio.
 
