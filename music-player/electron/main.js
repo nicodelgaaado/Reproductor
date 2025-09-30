@@ -29,9 +29,6 @@ function createWindow() {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show();
-    if (isDev) {
-      Promise.resolve(mainWindow.webContents.openDevTools({ mode: 'detach' })).catch(() => undefined);
-    }
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -57,3 +54,4 @@ app.on('activate', () => {
     createWindow();
   }
 });
+
