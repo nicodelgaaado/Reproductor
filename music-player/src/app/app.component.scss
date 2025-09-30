@@ -173,10 +173,19 @@
   width: 100%;
 }
 
+@keyframes artwork-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .artwork {
   width: clamp(220px, 32vw, 320px);
   height: clamp(220px, 32vw, 320px);
-  border-radius: 26px;
+  border-radius: 50%;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -194,6 +203,14 @@
     height: 100%;
     object-fit: cover;
     display: block;
+    border-radius: 50%;
+    animation: artwork-spin 18s linear infinite;
+    animation-play-state: paused;
+    will-change: transform;
+  }
+
+  &.playing img {
+    animation-play-state: running;
   }
 
   span {

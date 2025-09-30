@@ -41,7 +41,9 @@
       </div>
       <div class="now-playing">
         <ng-container *ngIf="currentTrack as track; else idleState">
-          <div class="artwork" [class.placeholder]="!track.artworkUrl">
+          <div class="artwork"
+               [class.placeholder]="!track.artworkUrl"
+               [class.playing]="isPlaying && track.artworkUrl">
             <img *ngIf="track.artworkUrl" [src]="track.artworkUrl" [alt]="track.name + ' cover art'" />
             <span *ngIf="!track.artworkUrl" aria-hidden="true">No cover</span>
           </div>
