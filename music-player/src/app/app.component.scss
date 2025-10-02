@@ -391,6 +391,7 @@
 }
 
 .thumbnail {
+  flex: 0 0 72px;
   width: 72px;
   height: 72px;
   border-radius: 12px;
@@ -408,7 +409,7 @@
   img {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
   }
 
   span {
@@ -570,6 +571,7 @@ input[type='range']::-moz-range-thumb {
   }
 
   .thumbnail {
+    flex: 0 0 56px;
     width: 56px;
     height: 56px;
   }
