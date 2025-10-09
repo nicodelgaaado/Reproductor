@@ -73,6 +73,7 @@ export class AppComponent implements OnDestroy {
     });
 
     this.refreshPlaylistSnapshot();
+    this.preloadTrackDurations(newTracks);
 
     if (!this.currentNode) {
       const nodeToPlay = firstInsertedNode ?? this.playlist.getHead();
@@ -275,6 +276,68 @@ export class AppComponent implements OnDestroy {
   private refreshPlaylistSnapshot(): void {
     this.tracks = this.playlist.toArray();
     this.currentTrackIndex = this.playlist.indexOfNode(this.currentNode);
+  }
+
+  private preloadTrackDurations(tracks: Track[]): void {
+    const pendingTracks = tracks.filter(track => !track.duration || !Number.isFinite(track.duration));
+    if (!pendingTracks.length) {
+      return;
+    }
+
+    pendingTracks.forEach(track => {
+      void this.loadTrackDuration(track)
+        .then(duration => {
+          if (duration === undefined) {
+            return;
+          }
+
+          this.zone.run(() => {
+            track.duration = duration;
+            if (this.currentNode?.value === track) {
+              this.duration = duration;
+            }
+          });
+        })
+        .catch(() => {
+          // Ignore metadata loading errors; duration will stay undefined.
+        });
+    });
+  }
+
+  private loadTrackDuration(track: Track): Promise<number | undefined> {
+    if (typeof Audio === 'undefined') {
+      return Promise.resolve(undefined);
+    }
+
+    return new Promise(resolve => {
+      const tempAudio = new Audio();
+      const cleanup = () => {
+        tempAudio.removeEventListener('loadedmetadata', onLoadedMetadata);
+        tempAudio.removeEventListener('error', onError);
+        tempAudio.pause();
+        tempAudio.src = '';
+        tempAudio.load();
+      };
+
+      const onLoadedMetadata = () => {
+        const duration = Number.isFinite(tempAudio.duration) && tempAudio.duration > 0
+          ? tempAudio.duration
+          : undefined;
+        cleanup();
+        resolve(duration);
+      };
+
+      const onError = () => {
+        cleanup();
+        resolve(undefined);
+      };
+
+      tempAudio.preload = 'metadata';
+      tempAudio.addEventListener('loadedmetadata', onLoadedMetadata);
+      tempAudio.addEventListener('error', onError);
+      tempAudio.src = track.url;
+      tempAudio.load();
+    });
   }
 
   private async createTrackFromFile(file: File): Promise<Track> {
